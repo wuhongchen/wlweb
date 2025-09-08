@@ -1,68 +1,241 @@
 version: '3.8'
 
+# 开发环境Docker Compose配置
+# 优化开发体验，支持热重载和快速调试
+
 services:
-  # MySQL数据库（开发环境）
+  # MySQL数据库服务
   mysql:
     image: mysql:8.0
-    container_name: wlweb_mysql_dev
+    container_name: ${PROJECT_NAME:-wlweb}_mysql_dev
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: wlweb_dev
-      MYSQL_USER: wlweb
-      MYSQL_PASSWORD: wlweb123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-game_middleware}
+      MYSQL_USER: ${MYSQL_USER:-app_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app123456}
+      MYSQL_ROOT_HOST: '%'
     ports:
-      - "3307:3306"  # 避免与本地MySQL冲突
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
-      - mysql_dev_data:/var/lib/mysql
-      - ./backend/migrations:/docker-entrypoint-initdb.d
+      - mysql_data_dev:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+      - ./mysql/conf.d:/etc/mysql/conf.d:ro
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=256M
+      --max-connections=200
     networks:
       - wlweb_dev_network
-    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      timeout: 20s
+      retries: 10
+      interval: 30s
+      start_period: 40s
 
-  # Redis缓存（开发环境）
+  # Redis缓存服务
   redis:
     image: redis:7-alpine
-    container_name: wlweb_redis_dev
+    container_name: ${PROJECT_NAME:-wlweb}_redis_dev
     restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis123456}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     ports:
-      - "6380:6379"  # 避免与本地Redis冲突
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis_dev_data:/data
+      - redis_data_dev:/data
     networks:
       - wlweb_dev_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123456}", "ping"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 10s
 
-  # FastAPI后端（开发环境）
+  # FastAPI后端服务
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
-    container_name: wlweb_backend_dev
+      dockerfile: Dockerfile
+      target: development
+      args:
+        - ENVIRONMENT=development
+    container_name: ${PROJECT_NAME:-wlweb}_backend_dev
     restart: unless-stopped
     environment:
-      DATABASE_URL: mysql+pymysql://wlweb:wlweb123@mysql:3306/wlweb_dev
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key-not-for-production
-      DEBUG: true
-      CORS_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:8080
+      # 数据库配置
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-app_user}:${MYSQL_PASSWORD:-app123456}@mysql:3306/${MYSQL_DATABASE:-game_middleware}
+      
+      # Redis配置
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123456}@redis:6379/0
+      
+      # 应用配置
+      DEBUG: "true"
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      
+      # 安全配置
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      
+      # CORS配置（开发环境允许所有源）
+      CORS_ORIGINS: "*"
+      
+      # 文件上传
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE: 10485760  # 10MB
+      
+      # 开发工具
+      RELOAD: "true"
+      WORKERS: 1
     ports:
-      - "8001:8000"  # 开发环境端口
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # 代码热重载
+      - ./backend:/app:cached
+      - backend_uploads_dev:/app/uploads
+      # 排除node_modules和缓存目录
+      - /app/__pycache__
+      - /app/.pytest_cache
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - wlweb_dev_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 30s
+    # 开发环境资源限制（较宽松）
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Vue.js前端服务（开发模式）
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+        - ENVIRONMENT=development
+        - VITE_API_BASE_URL=http://localhost:8000/api
+    container_name: ${PROJECT_NAME:-wlweb}_frontend_dev
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:8000/api
+      - VITE_APP_TITLE=游戏中间件管理系统 (开发)
+      - CHOKIDAR_USEPOLLING=true  # 支持Docker中的文件监听
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
     volumes:
-      - ./backend:/app  # 挂载源码，支持热重载
-      - ./backend/logs:/app/logs
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      # 代码热重载
+      - .:/app:cached
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      - backend
+    networks:
+      - wlweb_dev_network
+    # 开发环境资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
 
-volumes:
-  mysql_dev_data:
-    driver: local
-  redis_dev_data:
-    driver: local
+  # 开发工具：数据库管理界面
+  adminer:
+    image: adminer:4.8.1
+    container_name: ${PROJECT_NAME:-wlweb}_adminer_dev
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      ADMINER_DESIGN: pepa-linha
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wlweb_dev_network
+    profiles:
+      - tools
 
+  # 开发工具：Redis管理界面
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ${PROJECT_NAME:-wlweb}_redis_commander_dev
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:${REDIS_PASSWORD:-redis123456}
+      HTTP_USER: admin
+      HTTP_PASSWORD: ${REDIS_COMMANDER_PASSWORD:-admin123}
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wlweb_dev_network
+    profiles:
+      - tools
+
+  # 开发工具：邮件测试服务
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ${PROJECT_NAME:-wlweb}_mailhog_dev
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"  # SMTP端口
+      - "${MAILHOG_WEB_PORT:-8025}:8025"   # Web界面端口
+    networks:
+      - wlweb_dev_network
+    profiles:
+      - tools
+
+# 网络配置
 networks:
   wlweb_dev_network:
     driver: bridge
+    name: ${PROJECT_NAME:-wlweb}_dev_network
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+# 数据卷配置
+volumes:
+  mysql_data_dev:
+    name: ${PROJECT_NAME:-wlweb}_mysql_data_dev
+    driver: local
+  
+  redis_data_dev:
+    name: ${PROJECT_NAME:-wlweb}_redis_data_dev
+    driver: local
+  
+  backend_uploads_dev:
+    name: ${PROJECT_NAME:-wlweb}_backend_uploads_dev
+    driver: local

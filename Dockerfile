@@ -10,6 +10,11 @@ RUN npm ci --only=production
 
 # 复制前端源码并构建
 COPY . .
+# 清理并重新安装依赖以解决rollup模块问题
+RUN rm -rf node_modules package-lock.json && npm install
+# 设置生产环境变量
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
 # 第二阶段：生产环境

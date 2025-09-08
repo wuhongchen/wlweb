@@ -1,0 +1,439 @@
+# Docker Compose 监控服务配置
+# 包含 Prometheus、Grafana、AlertManager、Node Exporter 等监控组件
+
+version: '3.8'
+
+services:
+  # Prometheus 监控服务
+  prometheus:
+    image: prom/prometheus:v2.40.0
+    container_name: wlweb-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus:/etc/prometheus
+      - ./config/monitoring.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    networks:
+      - monitoring
+      - wlweb_network
+    labels:
+      - "com.wlweb.service=prometheus"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Grafana 可视化服务
+  grafana:
+    image: grafana/grafana:9.3.0
+    container_name: wlweb-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana:/etc/grafana/provisioning
+      - ./dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    labels:
+      - "com.wlweb.service=grafana"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # AlertManager 告警管理
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    container_name: wlweb-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./config/alertmanager:/etc/alertmanager
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+      - '--cluster.advertise-address=0.0.0.0:9093'
+    environment:
+      - SMTP_HOST=${SMTP_HOST:-localhost:587}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5001/webhook}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    labels:
+      - "com.wlweb.service=alertmanager"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Node Exporter 系统指标收集
+  node-exporter:
+    image: prom/node-exporter:v1.5.0
+    container_name: wlweb-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring
+    labels:
+      - "com.wlweb.service=node-exporter"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # cAdvisor 容器指标收集
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.46.0
+    container_name: wlweb-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    networks:
+      - monitoring
+    labels:
+      - "com.wlweb.service=cadvisor"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # MySQL Exporter 数据库指标收集
+  mysql-exporter:
+    image: prom/mysqld-exporter:v0.14.0
+    container_name: wlweb-mysql-exporter
+    restart: unless-stopped
+    ports:
+      - "9104:9104"
+    environment:
+      - DATA_SOURCE_NAME=${MYSQL_EXPORTER_DSN:-root:${MYSQL_ROOT_PASSWORD}@(mysql:3306)/}
+    networks:
+      - monitoring
+      - wlweb_network
+    depends_on:
+      - mysql
+    labels:
+      - "com.wlweb.service=mysql-exporter"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9104/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Redis Exporter 缓存指标收集
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.45.0
+    container_name: wlweb-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    networks:
+      - monitoring
+      - wlweb_network
+    depends_on:
+      - redis
+    labels:
+      - "com.wlweb.service=redis-exporter"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Nginx Exporter Web服务器指标收集
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:0.10.0
+    container_name: wlweb-nginx-exporter
+    restart: unless-stopped
+    ports:
+      - "9113:9113"
+    command:
+      - '-nginx.scrape-uri=http://nginx:80/nginx_status'
+    networks:
+      - monitoring
+      - wlweb_network
+    depends_on:
+      - nginx
+    labels:
+      - "com.wlweb.service=nginx-exporter"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9113/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Blackbox Exporter 端点监控
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.22.0
+    container_name: wlweb-blackbox-exporter
+    restart: unless-stopped
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./config/blackbox:/etc/blackbox_exporter
+    command:
+      - '--config.file=/etc/blackbox_exporter/config.yml'
+    networks:
+      - monitoring
+      - wlweb_network
+    labels:
+      - "com.wlweb.service=blackbox-exporter"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9115/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Loki 日志聚合
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: wlweb-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki:/etc/loki
+      - loki_data:/loki
+    command:
+      - '-config.file=/etc/loki/local-config.yaml'
+    networks:
+      - monitoring
+    labels:
+      - "com.wlweb.service=loki"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Promtail 日志收集
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: wlweb-promtail
+    restart: unless-stopped
+    volumes:
+      - ./config/promtail:/etc/promtail
+      - ./logs:/var/log/app:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - '-config.file=/etc/promtail/config.yml'
+    networks:
+      - monitoring
+    depends_on:
+      - loki
+    labels:
+      - "com.wlweb.service=promtail"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+
+  # Jaeger 分布式追踪
+  jaeger:
+    image: jaegertracing/all-in-one:1.39
+    container_name: wlweb-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger collector
+      - "6831:6831/udp"  # Jaeger agent
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - monitoring
+    labels:
+      - "com.wlweb.service=jaeger"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Elasticsearch (用于日志存储)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+    container_name: wlweb-elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - monitoring
+    labels:
+      - "com.wlweb.service=elasticsearch"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Kibana (日志可视化)
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.5.0
+    container_name: wlweb-kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    networks:
+      - monitoring
+    depends_on:
+      - elasticsearch
+    labels:
+      - "com.wlweb.service=kibana"
+      - "com.wlweb.environment=${ENVIRONMENT:-development}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# 数据卷
+volumes:
+  prometheus_data:
+    driver: local
+    labels:
+      - "com.wlweb.volume=prometheus"
+  
+  grafana_data:
+    driver: local
+    labels:
+      - "com.wlweb.volume=grafana"
+  
+  alertmanager_data:
+    driver: local
+    labels:
+      - "com.wlweb.volume=alertmanager"
+  
+  loki_data:
+    driver: local
+    labels:
+      - "com.wlweb.volume=loki"
+  
+  elasticsearch_data:
+    driver: local
+    labels:
+      - "com.wlweb.volume=elasticsearch"
+
+# 网络配置
+networks:
+  monitoring:
+    driver: bridge
+    labels:
+      - "com.wlweb.network=monitoring"
+  
+  wlweb_network:
+    external: true
+    name: wlweb_wlweb_network
+
+# 扩展配置
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels: "service,environment"
+
+# 资源限制模板
+x-resources: &default-resources
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+      reservations:
+        memory: 256M
+
+# 重启策略模板
+x-restart-policy: &default-restart
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+    window: 120s

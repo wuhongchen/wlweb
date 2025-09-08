@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.api.router import api_router
 from app.api.open_api_router import open_api_router
 from app.core.config import settings
@@ -8,7 +9,8 @@ app = FastAPI(
     title="游戏脚本中间件管理系统",
     description="Game Script Middleware Management System API",
     version="1.0.0",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    default_response_class=JSONResponse
 )
 
 # 设置CORS
@@ -19,6 +21,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加UTF-8编码中间件
+@app.middleware("http")
+async def add_charset_header(request, call_next):
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("application/json"):
+        response.headers["content-type"] = "application/json; charset=utf-8"
+    return response
 
 # 包含API路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
