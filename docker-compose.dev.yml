@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # MySQL数据库（开发环境）
+  mysql:
+    image: mysql:8.0
+    container_name: wlweb_mysql_dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: wlweb_dev
+      MYSQL_USER: wlweb
+      MYSQL_PASSWORD: wlweb123
+    ports:
+      - "3307:3306"  # 避免与本地MySQL冲突
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - wlweb_dev_network
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis缓存（开发环境）
+  redis:
+    image: redis:7-alpine
+    container_name: wlweb_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # 避免与本地Redis冲突
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - wlweb_dev_network
+
+  # FastAPI后端（开发环境）
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: wlweb_backend_dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://wlweb:wlweb123@mysql:3306/wlweb_dev
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-key-not-for-production
+      DEBUG: true
+      CORS_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:8080
+    ports:
+      - "8001:8000"  # 开发环境端口
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - wlweb_dev_network
+    volumes:
+      - ./backend:/app  # 挂载源码，支持热重载
+      - ./backend/logs:/app/logs
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  mysql_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  wlweb_dev_network:
+    driver: bridge

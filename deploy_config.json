@@ -1,0 +1,26 @@
+{
+  "project_root": "/Volumes/2T/git/wlweb",
+  "frontend_port": 5175,
+  "backend_port": 8001,
+  "log_dir": "logs",
+  "health_check_timeout": 30,
+  "health_check_interval": 2,
+  "frontend_build_command": "npm run build",
+  "backend_start_command": "uvicorn app.main:app --host 0.0.0.0 --port 8001",
+  "environment": "production",
+  "notification": {
+    "enabled": false,
+    "webhook_url": "",
+    "channels": ["email", "slack"]
+  },
+  "security": {
+    "ssl_enabled": false,
+    "ssl_cert_path": "",
+    "ssl_key_path": ""
+  },
+  "monitoring": {
+    "enabled": true,
+    "metrics_port": 9090,
+    "log_level": "INFO"
+  }
+}
