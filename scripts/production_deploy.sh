@@ -212,11 +212,26 @@ deploy_services() {
     
     # 拉取最新镜像
     log_info "拉取最新镜像..."
-    docker-compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" pull
+    if ! docker-compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
+        log_warn "镜像拉取失败，可能是网络问题，继续构建..."
+    fi
     
     # 构建镜像
     log_info "构建应用镜像..."
-    docker-compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache
+    if ! docker-compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache; then
+        log_warn "镜像构建失败，尝试清理缓存后重新构建..."
+        
+        # 清理构建缓存
+        docker builder prune -f
+        
+        # 重试构建
+        if ! docker-compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache --pull; then
+            log_error "镜像构建失败，请检查网络连接和镜像源配置"
+            log_info "建议检查 Docker daemon 配置文件 /etc/docker/daemon.json"
+            log_info "或参考 README_DOCKER_DEPLOY.md 中的镜像源配置"
+            exit 1
+        fi
+    fi
     
     # 启动服务
     log_info "启动服务..."

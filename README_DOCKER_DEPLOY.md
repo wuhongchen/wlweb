@@ -576,6 +576,105 @@ docker-compose -f docker-compose.prod.yml restart mysql
 ./scripts/ssl_manager.sh letsencrypt yourdomain.com admin@yourdomain.com
 ```
 
+#### 7. Docker镜像源问题
+
+当遇到镜像拉取失败或DNS解析错误时：
+
+```bash
+# 检查当前Docker镜像源配置
+docker info | grep -i registry
+
+# 方案1：重置Docker Desktop网络配置
+# 关闭Docker Desktop
+osascript -e 'quit app "Docker Desktop"'
+sleep 10
+# 重新启动Docker Desktop
+open -a "Docker Desktop"
+sleep 45
+
+# 方案2：配置国内镜像源
+# 创建或编辑Docker daemon配置文件
+sudo mkdir -p /etc/docker
+
+# 选项1：网易云镜像源（推荐）
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://hub-mirror.c.163.com"],
+  "dns": ["8.8.8.8", "114.114.114.114"]
+}
+EOF
+
+# 选项2：七牛云镜像源
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://reg-mirror.qiniu.com"],
+  "dns": ["8.8.8.8", "114.114.114.114"]
+}
+EOF
+
+# 选项3：阿里云镜像源（需要注册获取专属加速地址）
+# 地址格式：https://<你的阿里云加速ID>.mirror.aliyuncs.com
+# sudo tee /etc/docker/daemon.json <<-'EOF'
+# {
+#   "registry-mirrors": ["https://<你的阿里云加速ID>.mirror.aliyuncs.com"],
+#   "dns": ["8.8.8.8", "114.114.114.114"]
+# }
+# EOF
+
+# 选项4：多镜像源配置（备用方案）
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": [
+    "https://hub-mirror.c.163.com",
+    "https://reg-mirror.qiniu.com",
+    "https://mirror.baidubce.com"
+  ],
+  "dns": ["8.8.8.8", "114.114.114.114"]
+}
+EOF
+
+# 重启Docker服务（Linux系统）
+sudo systemctl restart docker
+
+# macOS Docker Desktop重启
+osascript -e 'quit app "Docker Desktop"'
+sleep 10
+open -a "Docker Desktop"
+
+# 方案3：使用官方镜像源（如果网络允许）
+# 删除镜像源配置
+sudo rm /etc/docker/daemon.json
+sudo systemctl restart docker
+
+# 方案4：手动下载镜像
+# 如果特定镜像无法下载，可以尝试其他标签
+docker pull python:3.11-slim-bullseye
+docker tag python:3.11-slim-bullseye python:3.11-slim
+
+# 验证镜像拉取
+docker pull python:3.11-slim
+docker pull node:18-alpine
+docker pull nginx:alpine
+```
+
+**macOS Docker Desktop特殊处理：**
+
+```bash
+# 检查Docker Desktop代理设置
+docker system info | grep -i proxy
+
+# 如果有代理配置导致问题，可以通过Docker Desktop GUI重置：
+# 1. 打开Docker Desktop
+# 2. 进入Settings > Resources > Proxies
+# 3. 取消所有代理设置
+# 4. 点击Apply & Restart
+
+# 或者通过命令行重置Docker Desktop
+osascript -e 'quit app "Docker Desktop"'
+rm -rf ~/Library/Group\ Containers/group.com.docker/settings.json
+open -a "Docker Desktop"
+```
+
 ### 日志管理
 
 #### 查看服务日志

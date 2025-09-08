@@ -35,7 +35,19 @@ quick_deploy() {
     # 重新构建并启动
     log_info "重新构建服务..."
     docker-compose down
-    docker-compose build --no-cache
+    
+    # 尝试构建镜像
+    if ! docker-compose build --no-cache; then
+        log_warn "镜像构建失败，尝试清理缓存后重新构建..."
+        docker builder prune -f
+        
+        if ! docker-compose build --no-cache --pull; then
+            log_error "镜像构建失败，请检查网络连接和镜像源配置"
+            log_info "建议参考 README_DOCKER_DEPLOY.md 中的镜像源配置"
+            exit 1
+        fi
+    fi
+    
     docker-compose up -d
     
     # 等待服务启动
