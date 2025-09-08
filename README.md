@@ -1,17 +1,10 @@
-# 游戏脚本中间件管理系统
+# WLWeb 后端API服务
 
-一个基于 Vue 3 + FastAPI 的游戏脚本中间件管理系统，用于管理游戏终端设备、执行脚本任务和监控系统状态。
+一个基于 FastAPI 的游戏脚本中间件管理系统后端API服务，提供完整的RESTful API接口用于管理游戏终端设备、执行脚本任务和监控系统状态。
 
 ## 技术栈
 
-### 前端
-- **Vue 3** - 渐进式 JavaScript 框架
-- **TypeScript** - 类型安全的 JavaScript 超集
-- **Vite** - 快速的前端构建工具
-- **Tailwind CSS** - 实用优先的 CSS 框架
-- **Vue Router** - Vue.js 官方路由管理器
-
-### 后端
+### 核心框架
 - **FastAPI** - 现代、快速的 Python Web 框架
 - **SQLAlchemy** - Python SQL 工具包和 ORM
 - **Pydantic** - 数据验证和设置管理
@@ -20,12 +13,10 @@
 
 ### 数据库
 - **MySQL 8.0** - 关系型数据库
-- **Redis** - 内存数据结构存储
 
 ### 部署
-- **Docker** - 容器化部署
-- **Docker Compose** - 多容器应用编排
-- **Nginx** - Web 服务器和反向代理
+- **Python 3.8+** - 运行环境
+- **Uvicorn** - ASGI 服务器
 
 ## 功能特性
 
@@ -47,10 +38,10 @@
 - 任务状态监控
 
 ### 数据统计
-- 系统概览仪表板
+- 系统概览数据
 - 终端设备统计
 - 任务执行统计
-- 实时数据展示
+- 实时数据查询
 
 ### 系统设置
 - 用户信息管理
@@ -62,30 +53,25 @@
 
 ```
 wlweb/
-├── backend/                 # FastAPI 后端
+├── backend/                 # FastAPI 后端核心
 │   ├── app/
-│   │   ├── api/            # API 路由
+│   │   ├── api/            # API 路由模块
+│   │   │   ├── endpoints/  # 具体接口实现
+│   │   │   └── deps.py     # 依赖注入
 │   │   ├── core/           # 核心配置
-│   │   ├── models/         # 数据模型
-│   │   ├── schemas/        # Pydantic 模式
-│   │   ├── services/       # 业务逻辑
+│   │   │   ├── config.py   # 应用配置
+│   │   │   ├── database.py # 数据库连接
+│   │   │   └── security.py # 安全认证
+│   │   ├── models/         # SQLAlchemy 数据模型
+│   │   ├── schemas/        # Pydantic 数据模式
+│   │   ├── services/       # 业务逻辑服务
 │   │   ├── utils/          # 工具函数
-│   │   └── main.py         # 应用入口
-│   ├── migrations/         # 数据库迁移
-│   ├── requirements.txt    # Python 依赖
-│   ├── Dockerfile         # 生产环境镜像
-│   └── Dockerfile.dev     # 开发环境镜像
-├── src/                    # Vue 前端
-│   ├── components/         # 组件
-│   ├── composables/        # 组合式函数
-│   ├── lib/               # 工具库
-│   ├── pages/             # 页面组件
-│   ├── router/            # 路由配置
-│   └── main.ts            # 应用入口
-├── docker-compose.yml      # 生产环境编排
-├── docker-compose.dev.yml  # 开发环境编排
-├── nginx.conf             # Nginx 配置
-├── .env.example           # 环境变量模板
+│   │   └── main.py         # FastAPI 应用入口
+│   ├── migrations/         # Alembic 数据库迁移
+│   ├── logs/              # 应用日志目录
+│   └── requirements.txt    # Python 依赖包
+├── deploy.sh              # 自动化部署脚本
+├── .env                   # 环境变量配置
 └── README.md              # 项目文档
 ```
 
@@ -93,210 +79,251 @@ wlweb/
 
 ### 环境要求
 
-- Docker 20.10+
-- Docker Compose 2.0+
-- Node.js 18+ (开发环境)
-- Python 3.11+ (开发环境)
+- **Python 3.8+** - 推荐使用 Python 3.9 或更高版本
+- **MySQL 8.0+** - 数据库服务
+- **pip** - Python 包管理器
 
-### 生产环境部署
+### 一键部署（推荐）
 
-1. **克隆项目**
+使用提供的自动化部署脚本，可以快速完成环境检测、依赖安装和服务启动：
+
+```bash
+# 克隆项目
+git clone <repository-url>
+cd wlweb
+
+# 一键部署
+./deploy.sh start
+```
+
+部署脚本功能：
+- ✅ Python 环境检测（3.8+）
+- ✅ 自动创建虚拟环境
+- ✅ 安装项目依赖
+- ✅ 配置文件检查和创建
+- ✅ MySQL 连接测试
+- ✅ 服务启动和健康检查
+
+### 手动部署
+
+如果需要手动控制部署过程：
+
+1. **环境准备**
    ```bash
-   git clone <repository-url>
-   cd wlweb
+   # 创建虚拟环境
+   python3 -m venv venv
+   source venv/bin/activate
+   
+   # 安装依赖
+   pip install -r backend/requirements.txt
    ```
 
 2. **配置环境变量**
    ```bash
+   # 复制并编辑配置文件
    cp .env.example .env
-   # 编辑 .env 文件，修改数据库密码、JWT密钥等配置
+   # 修改数据库连接、JWT密钥等配置
    ```
 
-3. **启动服务**
+3. **数据库初始化**
    ```bash
-   docker-compose up -d
-   ```
-
-4. **访问应用**
-   - 前端: http://localhost
-   - 后端API: http://localhost:8000
-   - API文档: http://localhost:8000/docs
-
-### 开发环境设置
-
-1. **启动数据库服务**
-   ```bash
-   docker-compose -f docker-compose.dev.yml up mysql redis -d
-   ```
-
-2. **后端开发**
-   ```bash
+   # 运行数据库迁移
    cd backend
-   pip install -r requirements.txt
-   uvicorn app.main:app --reload --port 8001
+   alembic upgrade head
    ```
 
-3. **前端开发**
+4. **启动服务**
    ```bash
-   npm install
-   npm run dev
+   # 启动API服务
+   uvicorn main:app --host 0.0.0.0 --port 8000
    ```
 
-## API 接口
 
-### 认证接口
+
+## 服务管理
+
+使用部署脚本可以方便地管理服务：
+
+```bash
+# 启动服务
+./deploy.sh start
+
+# 停止服务
+./deploy.sh stop
+
+# 重启服务
+./deploy.sh restart
+
+# 查看服务状态
+./deploy.sh status
+
+# 查看实时日志
+./deploy.sh logs
+```
+
+## API 接口文档
+
+服务启动后，可以通过以下地址访问：
+
+- **API 服务**: http://localhost:8000
+- **交互式文档**: http://localhost:8000/docs
+- **ReDoc 文档**: http://localhost:8000/redoc
+- **健康检查**: http://localhost:8000/health
+
+### 主要接口模块
+
+#### 认证接口
 - `POST /auth/login` - 用户登录
 - `POST /auth/logout` - 用户登出
 - `GET /auth/me` - 获取当前用户信息
 
-### 用户管理
-- `GET /users` - 获取用户列表
-- `POST /users` - 创建用户
-- `PUT /users/{user_id}` - 更新用户
+#### 用户管理
+- `GET /users/` - 获取用户列表
+- `POST /users/` - 创建新用户
+- `GET /users/{user_id}` - 获取用户详情
+- `PUT /users/{user_id}` - 更新用户信息
 - `DELETE /users/{user_id}` - 删除用户
 
-### 终端管理
-- `GET /terminals` - 获取终端列表
-- `POST /terminals` - 创建终端
+#### 终端设备管理
+- `GET /terminals/` - 获取终端列表
+- `POST /terminals/` - 注册新终端
 - `GET /terminals/{terminal_id}` - 获取终端详情
-- `PUT /terminals/{terminal_id}` - 更新终端
-- `DELETE /terminals/{terminal_id}` - 删除终端
+- `PUT /terminals/{terminal_id}` - 更新终端信息
+- `POST /terminals/{terminal_id}/heartbeat` - 终端心跳
 
-### 任务管理
-- `GET /tasks` - 获取任务列表
-- `POST /tasks` - 创建任务
+#### 任务管理
+- `GET /tasks/` - 获取任务列表
+- `POST /tasks/` - 创建新任务
 - `GET /tasks/{task_id}` - 获取任务详情
 - `PUT /tasks/{task_id}` - 更新任务
-- `DELETE /tasks/{task_id}` - 删除任务
 - `POST /tasks/{task_id}/execute` - 执行任务
 
-### 对外开放接口
-- `POST /external/terminals/register` - 终端注册
-- `POST /external/terminals/heartbeat` - 终端心跳
-- `POST /external/terminals/data` - 终端数据上报
-- `GET /external/tasks/{terminal_id}` - 获取终端任务
-- `POST /external/tasks/result` - 任务结果上报
-
-## 数据库设计
-
-### 主要数据表
-
-- **users** - 用户表
-- **user_sessions** - 用户会话表
-- **terminals** - 终端设备表
-- **terminal_data** - 终端数据表
-- **tasks** - 任务表
-- **task_executions** - 任务执行记录表
-
-详细的数据库结构请参考 `backend/migrations/001_initial_schema.sql`
+#### 数据统计
+- `GET /stats/overview` - 系统概览统计
+- `GET /stats/terminals` - 终端统计数据
+- `GET /stats/tasks` - 任务统计数据
 
 ## 配置说明
 
-### 环境变量
+### 环境变量配置 (.env)
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | `root123` |
-| `MYSQL_DATABASE` | 数据库名 | `wlweb` |
-| `MYSQL_USER` | 数据库用户 | `wlweb` |
-| `MYSQL_PASSWORD` | 数据库密码 | `wlweb123` |
-| `SECRET_KEY` | JWT 密钥 | - |
-| `DEBUG` | 调试模式 | `false` |
-| `CORS_ORIGINS` | 跨域允许源 | - |
+```bash
+# 数据库配置
+MYSQL_SERVER=localhost
+MYSQL_PORT=3306
+MYSQL_USER=wlweb
+MYSQL_PASSWORD=wlweb123
+MYSQL_DB=wlweb
 
-### 系统配置
+# JWT 配置
+SECRET_KEY=your-secret-key-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-- **最大终端连接数**: 100
-- **任务执行超时**: 300秒
-- **数据保留天数**: 30天
-- **自动数据清理**: 启用
+# 应用配置
+DEBUG=false
+BACKEND_CORS_ORIGINS=*
+```
+
+### 依赖包说明
+
+核心依赖包及其作用：
+
+- `fastapi==0.104.1` - Web 框架
+- `uvicorn[standard]==0.24.0` - ASGI 服务器
+- `sqlalchemy==2.0.23` - ORM 框架
+- `alembic==1.12.1` - 数据库迁移
+- `pymysql==1.1.0` - MySQL 驱动
+- `python-jose[cryptography]==3.3.0` - JWT 处理
+- `passlib[bcrypt]==1.7.4` - 密码加密
+- `python-multipart==0.0.6` - 文件上传支持
+- `pydantic==2.5.0` - 数据验证
+- `pydantic-settings==2.1.0` - 配置管理
+- `python-dotenv==1.0.0` - 环境变量加载
+- `cryptography==41.0.7` - 加密库
 
 ## 开发指南
 
-### 代码规范
+### 添加新的API接口
 
-- **前端**: 使用 ESLint + Prettier
-- **后端**: 使用 Black + Flake8
-- **提交**: 使用 Conventional Commits
+1. 在 `backend/app/schemas/` 中定义数据模式
+2. 在 `backend/app/models/` 中定义数据模型
+3. 在 `backend/app/services/` 中实现业务逻辑
+4. 在 `backend/app/api/endpoints/` 中创建路由
+5. 在 `backend/app/api/api.py` 中注册路由
 
-### 测试
-
-```bash
-# 后端测试
-cd backend
-pytest
-
-# 前端测试
-npm run test
-```
-
-### 构建
+### 数据库迁移
 
 ```bash
-# 前端构建
-npm run build
+# 生成迁移文件
+alembic revision --autogenerate -m "描述变更内容"
 
-# Docker 镜像构建
-docker-compose build
+# 执行迁移
+alembic upgrade head
+
+# 回滚迁移
+alembic downgrade -1
 ```
 
-## 部署指南
+### 日志查看
 
-### 生产环境部署
+应用日志存储在 `backend/logs/` 目录：
 
-1. 确保服务器安装了 Docker 和 Docker Compose
-2. 配置环境变量和安全设置
-3. 使用 `docker-compose up -d` 启动服务
-4. 配置反向代理和 SSL 证书
-5. 设置监控和日志收集
+```bash
+# 查看实时日志
+tail -f backend/logs/app.log
 
-### 安全建议
+# 或使用部署脚本
+./deploy.sh logs
+```
 
-- 修改默认密码和密钥
-- 启用 HTTPS
-- 配置防火墙规则
-- 定期更新依赖包
-- 备份数据库
+## 性能优化
+
+### 生产环境建议
+
+1. **数据库优化**
+   - 配置适当的连接池大小
+   - 添加必要的数据库索引
+   - 定期优化数据库表
+
+2. **应用优化**
+   - 使用 Gunicorn 作为生产服务器
+   - 配置适当的工作进程数
+   - 启用 Gzip 压缩
+
+3. **安全配置**
+   - 修改默认的 JWT 密钥
+   - 配置 HTTPS
+   - 限制 CORS 来源
+   - 定期更新依赖包
 
 ## 故障排除
 
 ### 常见问题
 
-1. **数据库连接失败**
-   - 检查数据库服务是否启动
-   - 验证连接配置和密码
+1. **服务启动失败**
+   - 检查 Python 版本是否满足要求
+   - 确认 MySQL 服务正在运行
+   - 检查端口 8000 是否被占用
 
-2. **前端无法访问后端**
+2. **数据库连接失败**
+   - 验证 .env 文件中的数据库配置
+   - 确认 MySQL 用户权限
+   - 检查网络连接
+
+3. **API 请求失败**
    - 检查 CORS 配置
-   - 验证 API 地址配置
+   - 验证 JWT 令牌
+   - 查看应用日志
 
-3. **Docker 容器启动失败**
-   - 查看容器日志: `docker-compose logs`
-   - 检查端口占用情况
+### 获取帮助
 
-### 日志查看
+如果遇到问题，可以：
 
-```bash
-# 查看所有服务日志
-docker-compose logs
-
-# 查看特定服务日志
-docker-compose logs backend
-docker-compose logs frontend
-```
-
-## 贡献指南
-
-1. Fork 项目
-2. 创建功能分支
-3. 提交更改
-4. 推送到分支
-5. 创建 Pull Request
+1. 查看应用日志：`./deploy.sh logs`
+2. 检查服务状态：`./deploy.sh status`
+3. 查看 API 文档：http://localhost:8000/docs
 
 ## 许可证
 
-MIT License
-
-## 联系方式
-
-如有问题或建议，请提交 Issue 或联系开发团
+本项目采用 MIT 许可证。详情请参阅 LICENSE 文件。
