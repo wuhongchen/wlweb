@@ -1,9 +1,24 @@
+import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.api.router import api_router
 from app.api.open_api_router import open_api_router
 from app.core.config import settings
+
+# 配置日志
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(log_dir, 'app.log'), encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
 
 app = FastAPI(
     title="游戏脚本中间件管理系统",
